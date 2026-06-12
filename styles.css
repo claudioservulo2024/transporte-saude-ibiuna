@@ -1,0 +1,25 @@
+*{
+  margin: 0;
+  padding: 0;
+}
+body{
+  text-align: center;
+  padding-top: 100px;
+}
+svg{
+  width: 200px;
+  height: 200px;
+}
+.st0{
+  fill:none;
+  stroke:#009FE3;
+  stroke-miterlimit:10;
+  /* Etrafındaki kesikli çizgilerin miktarı */
+  stroke-dasharray:12;
+}
+.st1{
+  fill:#009FE3;
+}
+.st2{
+  fill:#FFFFFF;
+}
