@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>🚑 Transporte Saúde - Ibiúna</title>
+
+  <!-- ✅ PWA MANIFEST + META TAGS -->
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#1d4ed8"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="TranspSaúde"/>
+  <link rel="apple-touch-icon" id="apple-icon" href="/icons/icon-192.png"/>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- ✅ GERAR ÍCONES SVG AUTOMATICAMENTE VIA CANVAS -->
+  <script>
+    function gerarIcone(tamanho) {
+      const canvas = document.createElement('canvas')
+      canvas.width  = tamanho
+      canvas.height = tamanho
+      const ctx = canvas.getContext('2d')
+
+      // Fundo azul arredondado
+      ctx.fillStyle = '#1d4ed8'
+      ctx.beginPath()
+      ctx.roundRect(0, 0, tamanho, tamanho, tamanho * 0.2)
+      ctx.fill()
+
+      // Emoji ambulância centralizado
+      ctx.font = `${tamanho * 0.55}px serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🚑', tamanho / 2, tamanho / 2)
+
+      return canvas.toDataURL('image/png')
+    }
+
+    window.addEventListener('load', () => {
+      const icon192 = gerarIcone(192)
+      const icon512 = gerarIcone(512)
+
+      // Atualiza apple-touch-icon dinamicamente
+      const appleIcon = document.getElementById('apple-icon')
+      if (appleIcon) appleIcon.setAttribute('href', icon192)
+
+      // Salva no localStorage para uso offline
+      try {
+        localStorage.setItem('icon-192', icon192)
+        localStorage.setItem('icon-512', icon512)
+      } catch(e) {}
+
+      console.log('✅ Ícones gerados automaticamente via Canvas')
+    })
+  </script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { overscroll-behavior: none; }
+    .page { display: none; }
+    .page.active { display: flex; }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none !important; }
+      .bottom-nav { display: flex !important; }
+      main { padding-bottom: 72px !important; }
+    }
+
+    .sidebar-link.active { background: white; color: #1d4ed8 !important; }
+    .bottom-nav-item.active span { color: #1d4ed8 !important; }
+    .bottom-nav-item.active .nav-dot { display: block !important; }
+
+    .fade { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; } }
+
+    .spinner {
+      border: 3px solid #e5e7eb;
+      border-top: 3px solid #3b82f6;
+      border-radius: 50%;
+      width: 20px; height: 20px;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .bottom-nav { padding-bottom: env(safe-area-inset-bottom); }
+
+    #toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: #1f2937; color: white; padding: 10px 20px;
+      border-radius: 999px; font-size: 13px; z-index: 9999;
+      opacity: 0; transition: opacity 0.3s;
+      white-space: nowrap; pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+    .card-touch:active { transform: scale(0.98); transition: transform 0.1s; }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans">
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="page-login" class="page active min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+    <div class="text-center mb-7">
+      <div class="text-6xl mb-3">🚑</div>
+      <h1 class="text-xl font-bold text-gray-800">Transporte Saúde</h1>
+      <p class="text-gray-400 text-xs mt-1">Ibiúna • Sorocaba • Itu • São Roque</p>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input id="login-email" type="email" inputmode="email" autocomplete="email"
+          placeholder="email@exemplo.com"
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+        <input id="login-senha" type="password" autocomplete="current-password"
+          placeholder="••••••••"
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div id="login-erro" class="text-red-500 text-xs hidden px-1"></div>
+      <button onclick="fazerLogin()"
+        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2">
+        <span id="login-txt">Entrar</span>
+        <span id="login-spin" class="spinner hidden"></span>
+      </button>
+      <button onclick="fazerCadastro()"
+        class="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 font-semibold py-3 rounded-xl text-sm transition">
+        Criar conta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== APP ==================== -->
+<div id="page-app" class="page min-h-screen flex flex-col md:flex-row">
+
+  <!-- SIDEBAR Desktop -->
+  <aside class="sidebar w-56 bg-blue-700 min-h-screen flex-col flex-shrink-0 hidden md:flex">
+    <div class="p-4 border-b border-blue-600">
+      <div class="flex items-center gap-3">
+        <span class="text-3xl">🚑</span>
+        <div>
+          <p class="text-white font-bold text-sm">Transporte Saúde</p>
+          <p class="text-blue-200 text-xs">Ibiúna</p>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 p-3 space-y-1">
+      <a onclick="navegar('dashboard')"      class="sidebar-link active flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">📊 Dashboard</a>
+      <a onclick="navegar('viagens')"        class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">🗺️ Viagens</a>
+      <a onclick="navegar('nova-viagem')"    class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">➕ Nova Viagem</a>
+      <a onclick="navegar('pacientes')"      class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">👤 Pacientes</a>
+      <a onclick="navegar('motoristas')"     class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">🚗 Motoristas</a>
+      <a onclick="navegar('acompanhamento')" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-blue-100 hover:bg-blue-600 cursor-pointer transition">📍 Acompanhamento</a>
+    </nav>
+    <div class="p-3 border-t border-blue-600">
+      <p id="user-email" class="text-blue-200 text-xs px-3 mb-2 truncate"></p>
+      <a onclick="sair()" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-blue-100 hover:bg-blue-600 cursor-pointer transition">🚪 Sair</a>
+    </div>
+  </aside>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="flex-1 overflow-auto">
+
+    <!-- HEADER MOBILE -->
+    <div class="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">🚑</span>
+        <div>
+          <p class="font-bold text-gray-800 text-sm" id="mobile-title">Dashboard</p>
+          <p class="text-gray-400 text-xs">Ibiúna</p>
+        </div>
+      </div>
+      <button onclick="sair()" class="text-gray-400 text-xs border border-gray-200 px-3 py-1.5 rounded-lg">Sair</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="view-dashboard" class="view p-4 md:p-6 fade">
+      <div class="hidden md:block mb-6">
+        <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+        <p class="text-gray-400 text-sm">Visão geral do sistema</p>
+      </div>
+      <div id="dashboard-cards" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+        <div class="col-span-2 md:col-span-3 text-center py-8"><div class="spinner mx-auto"></div></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <h2 class="font-semibold text-gray-800 mb-4 text-sm">📅 Viagens de Hoje</h2>
+        <div class="space-y-3" id="dashboard-hoje"></div>
+      </div>
+    </div>
+
+    <!-- VIAGENS -->
+    <div id="view-viagens" class="view p-4 md:p-6 fade hidden">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h1 class="text-xl font-bold text-gray-800 hidden md:block">Viagens</h1>
+          <p id="viagens-count" class="text-gray-400 text-xs"></p>
+        </div>
+        <button onclick="navegar('nova-viagem')" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">+ Nova</button>
+      </div>
+      <input id="viagens-filtro" oninput="filtrarViagens()"
+        placeholder="🔍 Buscar paciente ou destino..."
+        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      <div id="viagens-lista" class="space-y-3">
+        <div class="text-center py-8"><div class="spinner mx-auto"></div></div>
+      </div>
+    </div>
+
+    <!-- NOVA VIAGEM -->
+    <div id="view-nova-viagem" class="view p-4 md:p-6 fade hidden">
+      <div class="hidden md:block mb-6">
+        <h1 class="text-2xl font-bold text-gray-800">Nova Viagem</h1>
+        <p class="text-gray-400 text-sm">Agendar transporte de paciente</p>
+      </div>
+      <div id="nova-viagem-sucesso" class="hidden bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-4 text-sm">✅ Viagem agendada com sucesso!</div>
+      <div id="nova-viagem-erro"    class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm"></div>
+      <div class="bg-white rounded-2xl shadow-sm p-5 max-w-2xl">
+        <form onsubmit="salvarViagem(event)" class="space-y-4">
+          <div>
+            <p class="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">👤 Dados do Paciente</p>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Nome completo *</label>
+                <input id="nv-nome" required placeholder="Nome do paciente"
+                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">CPF</label>
+                  <input id="nv-cpf" placeholder="000.000.000-00" inputmode="numeric"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">Telefone</label>
+                  <input id="nv-tel" placeholder="(15) 99999-9999" inputmode="tel"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">🗺️ Dados da Viagem</p>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Destino *</label>
+                <select id="nv-destino" required
+                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                  <option value="">Selecione a cidade...</option>
+                  <option>Sorocaba</option>
+                  <option>Itu</option>
+                  <option>São Roque</option>
+                  <option>Pilar do Sul</option>
+                  <option>Votorantim</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Unidade de Saúde</label>
+                <input id="nv-unidade" placeholder="Ex: Hospital Regional de Sorocaba"
+                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">Data *</label>
+                  <input id="nv-data" type="date" required
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">Horário *</label>
+                  <input id="nv-hora" type="time" required
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Observações</label>
+                <textarea id="nv-obs" rows="3"
+                  placeholder="Cadeira de rodas, acompanhante, necessidades especiais..."
+                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button type="submit" id="btn-salvar-viagem"
+              class="flex-1 bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+              ✅ Agendar Viagem
+              <span id="spin-viagem" class="spinner hidden"></span>
+            </button>
+            <button type="button" onclick="navegar('viagens')"
+              class="px-5 border-2 border-gray-200 text-gray-500 py-3 rounded-xl text-sm">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- PACIENTES -->
+    <div id="view-pacientes" class="view p-4 md:p-6 fade hidden">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h1 class="text-xl font-bold text-gray-800 hidden md:block">Pacientes</h1>
+          <p id="pacientes-count" class="text-gray-400 text-xs"></p>
+        </div>
+        <button onclick="toggleFormPaciente()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">+ Novo</button>
+      </div>
+      <div id="form-paciente" class="hidden bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <p class="font-semibold text-gray-800 text-sm mb-4">Novo Paciente</p>
+        <form onsubmit="salvarPaciente(event)" class="space-y-3">
+          <input id="np-nome" required placeholder="Nome completo *"
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="np-cpf" placeholder="CPF" inputmode="numeric"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <input id="np-tel" placeholder="Telefone" inputmode="tel"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          <input id="np-end" placeholder="Endereço"
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          <div class="flex gap-3">
+            <button type="submit" id="btn-salvar-paciente"
+              class="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+              Salvar <span id="spin-paciente" class="spinner hidden"></span>
+            </button>
+            <button type="button" onclick="toggleFormPaciente()"
+              class="px-5 border-2 border-gray-200 text-gray-500 py-3 rounded-xl text-sm">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <div id="pacientes-lista" class="space-y-3">
+        <div class="text-center py-8"><div class="spinner mx-auto"></div></div>
+      </div>
+    </div>
+
+    <!-- MOTORISTAS -->
+    <div id="view-motoristas" class="view p-4 md:p-6 fade hidden">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h1 class="text-xl font-bold text-gray-800 hidden md:block">Motoristas</h1>
+          <p id="motoristas-count" class="text-gray-400 text-xs"></p>
+        </div>
+        <button onclick="toggleFormMotorista()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">+ Novo</button>
+      </div>
+      <div id="form-motorista" class="hidden bg-white rounded-2xl shadow-sm p-5 mb-4">
+        <p class="font-semibold text-gray-800 text-sm mb-4">Novo Motorista</p>
+        <form onsubmit="salvarMotorista(event)" class="space-y-3">
+          <input id="nm-nome" required placeholder="Nome completo *"
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="nm-cnh" placeholder="CNH"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <input id="nm-tel" placeholder="Telefone" inputmode="tel"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="nm-vei" placeholder="Veículo (ex: Van Sprinter)"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <input id="nm-placa" placeholder="Placa (ABC-1234)"
+              class="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          <div class="flex gap-3">
+            <button type="submit" id="btn-salvar-motorista"
+              class="flex-1 bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+              Salvar <span id="spin-motorista" class="spinner hidden"></span>
+            </button>
+            <button type="button" onclick="toggleFormMotorista()"
+              class="px-5 border-2 border-gray-200 text-gray-500 py-3 rounded-xl text-sm">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <div id="motoristas-lista" class="space-y-3">
+        <div class="text-center py-8"><div class="spinner mx-auto"></div></div>
+      </div>
+    </div>
+
+    <!-- ACOMPANHAMENTO -->
+    <div id="view-acompanhamento" class="view p-4 md:p-6 fade hidden">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h1 class="text-xl font-bold text-gray-800 hidden md:block">Acompanhamento</h1>
+          <p class="text-gray-400 text-xs">Status em tempo real</p>
+        </div>
+        <button onclick="renderAcompanhamento()" class="border-2 border-gray-200 text-gray-500 px-4 py-2 rounded-xl text-sm">🔄 Atualizar</button>
+      </div>
+      <div id="acomp-cards" class="space-y-3">
+        <div class="text-center py-8"><div class="spinner mx-auto"></div></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- BOTTOM NAV Mobile -->
+  <nav class="bottom-nav hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-20 shadow-lg">
+    <div class="grid grid-cols-5 h-16">
+      <button onclick="navegar('dashboard')" class="bottom-nav-item active flex flex-col items-center justify-center gap-0.5 relative">
+        <div class="nav-dot hidden w-1 h-1 bg-blue-600 rounded-full absolute top-2"></div>
+        <span class="text-xl">📊</span>
+        <span class="text-xs text-gray-500 font-medium">Início</span>
+      </button>
+      <button onclick="navegar('viagens')" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 relative">
+        <div class="nav-dot hidden w-1 h-1 bg-blue-600 rounded-full absolute top-2"></div>
+        <span class="text-xl">🗺️</span>
+        <span class="text-xs text-gray-500 font-medium">Viagens</span>
+      </button>
+      <button onclick="navegar('nova-viagem')" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 relative">
+        <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center shadow-lg -mt-5">
+          <span class="text-2xl text-white font-bold">+</span>
+        </div>
+      </button>
+      <button onclick="navegar('acompanhamento')" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 relative">
+        <div class="nav-dot hidden w-1 h-1 bg-blue-600 rounded-full absolute top-2"></div>
+        <span class="text-xl">📍</span>
+        <span class="text-xs text-gray-500 font-medium">Status</span>
+      </button>
+      <button onclick="navegar('pacientes')" class="bottom-nav-item flex flex-col items-center justify-center gap-0.5 relative">
+        <div class="nav-dot hidden w-1 h-1 bg-blue-600 rounded-full absolute top-2"></div>
+        <span class="text-xl">👤</span>
+        <span class="text-xs text-gray-500 font-medium">Pacientes</span>
+      </button>
+    </div>
+  </nav>
+
+</div>
+
+<!-- ==================== SCRIPTS ==================== -->
+<script>
+// ============ SUPABASE ============
+const { createClient } = supabase
+const db = createClient(
+  'https://phoebtlxnhyvumrwjgar.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob2VidGx4bmh5dnVtcndqZ2FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjM5ODAsImV4cCI6MjA5NjY5OTk4MH0.-rhBtFDiOYuErG6Z08f5tO_GYXezYcgWbAP-tGPjm_k'
+)
+
+// ============ HELPERS ============
+const statusCor = {
+  'Agendada':     'bg-yellow-100 text-yellow-700 border-yellow-300',
+  'Em andamento': 'bg-blue-100 text-blue-700 border-blue-300',
+  'Concluída':    'bg-green-100 text-green-700 border-green-300',
+  'Cancelada':    'bg-red-100 text-red-700 border-red-300',
+}
+const borderLeft = {
+  'Agendada':     'border-l-yellow-400',
+  'Em andamento': 'border-l-blue-500',
+  'Concluída':    'border-l-green-500',
+  'Cancelada':    'border-l-red-400',
+}
+
+function badge(s) {
+  return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold border ${statusCor[s]||'bg-gray-100 text-gray-500'}">${s}</span>`
+}
+function fmtData(d) {
+  if (!d) return '-'
+  const [y,m,dia] = d.split('-')
+  return `${dia}/${m}/${y}`
+}
+function spin(id, on) {
+  document.getElementById(id)?.classList.toggle('hidden', !on)
+}
+function toast(msg) {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.classList.add('show')
+  setTimeout(() => el.classList.remove('show'), 2500)
+}
+
+// ============ AUTH ============
+async function fazerLogin() {
+  const email = document.getElementById('login-email').value.trim()
+  const senha = document.getElementById('login-senha').value
+  const erro  = document.getElementById('login-erro')
+  erro.classList.add('hidden')
+  if (!email || !senha) { erro.textContent = 'Preencha email e senha.'; erro.classList.remove('hidden'); return }
+  spin('login-spin', true)
+  document.getElementById('login-txt').textContent = 'Entrando...'
+  const { data, error } = await db.auth.signInWithPassword({ email, password: senha })
+  spin('login-spin', false)
+  document.getElementById('login-txt').textContent = 'Entrar'
+  if (error) {
+    erro.textContent = error.message === 'Invalid login credentials' ? '❌ Email ou senha inválidos.' : '❌ ' + error.message
+    erro.classList.remove('hidden'); return
+  }
+  document.getElementById('user-email').textContent = data.user.email
+  abrirApp()
+}
+
+async function fazerCadastro() {
+  const email = document.getElementById('login-email').value.trim()
+  const senha = document.getElementById('login-senha').value
+  const erro  = document.getElementById('login-erro')
+  erro.classList.add('hidden')
+  if (!email || !senha) { erro.textContent = 'Preencha email e senha.'; erro.classList.remove('hidden'); return }
+  if (senha.length < 6) { erro.textContent = 'Senha mínima: 6 caracteres.'; erro.classList.remove('hidden'); return }
+  spin('login-spin', true)
+  const { data, error } = await db.auth.signUp({ email, password: senha })
+  spin('login-spin', false)
+  if (error) { erro.textContent = '❌ ' + error.message; erro.classList.remove('hidden'); return }
+  if (data.user && !data.session) {
+    erro.style.color = '#16a34a'
+    erro.textContent = '✅ Conta criada! Confirme seu email.'
+    erro.classList.remove('hidden')
+  } else {
+    document.getElementById('user-email').textContent = data.user.email
+    abrirApp()
+  }
+}
+
+async function sair() {
+  await db.auth.signOut()
+  document.getElementById('page-app').classList.remove('active')
+  document.getElementById('page-login').classList.add('active')
+}
+
+function abrirApp() {
+  document.getElementById('page-login').classList.remove('active')
+  document.getElementById('page-app').classList.add('active')
+  navegar('dashboard')
+}
+
+db.auth.getSession().then(({ data }) => {
+  if (data.session) {
+    document.getElementById('user-email').textContent = data.session.user.email
+    abrirApp()
+  }
+})
+
+// ============ NAVEGAÇÃO ============
+const VIEWS  = ['dashboard','viagens','nova-viagem','pacientes','motoristas','acompanhamento']
+const TITLES = { dashboard:'Dashboard', viagens:'Viagens', 'nova-viagem':'Nova Viagem', pacientes:'Pacientes', motoristas:'Motoristas', acompanhamento:'Acompanhamento' }
+
+function navegar(view) {
+  VIEWS.forEach(v => document.getElementById('view-'+v)?.classList.add('hidden'))
+  const el = document.getElementById('view-'+view)
+  if (el) { el.classList.remove('hidden'); el.classList.add('fade') }
+  document.getElementById('mobile-title').textContent = TITLES[view] || view
+
+  document.querySelectorAll('.sidebar-link').forEach(l => {
+    l.classList.remove('active'); l.classList.add('text-blue-100')
+  })
+  const idx = VIEWS.indexOf(view)
+  if (idx >= 0) {
+    const links = document.querySelectorAll('.sidebar-link')
+    if (links[idx]) { links[idx].classList.add('active'); links[idx].classList.remove('text-blue-100') }
+  }
+
+  document.querySelectorAll('.bottom-nav-item').forEach(b => {
+    b.classList.remove('active')
+    b.querySelector('.nav-dot')?.classList.add('hidden')
+  })
+  const navMap = { dashboard:0, viagens:1, 'nova-viagem':2, acompanhamento:3, pacientes:4 }
+  const navIdx = navMap[view]
+  if (navIdx !== undefined) {
+    const btns = document.querySelectorAll('.bottom-nav-item')
+    if (btns[navIdx]) {
+      btns[navIdx].classList.add('active')
+      btns[navIdx].querySelector('.nav-dot')?.classList.remove('hidden')
+    }
+  }
+
+  if (view === 'dashboard')       renderDashboard()
+  if (view === 'viagens')         renderViagens()
+  if (view === 'pacientes')       renderPacientes()
+  if (view === 'motoristas')      renderMotoristas()
+  if (view === 'acompanhamento')  renderAcompanhamento()
+}
+
+// ============ DASHBOARD ============
+async function renderDashboard() {
+  document.getElementById('dashboard-hoje').innerHTML = '<div class="text-center py-4"><div class="spinner mx-auto"></div></div>'
+  document.getElementById('dashboard-cards').innerHTML = '<div class="col-span-2 md:col-span-3 text-center py-4"><div class="spinner mx-auto"></div></div>'
+  const hoje = new Date().toISOString().split('T')[0]
+  const [{ data: viagens }, { data: pacientes }, { data: motoristas }] = await Promise.all([
+    db.from('viagens').select('*').order('data', { ascending: true }),
+    db.from('pacientes').select('id'),
+    db.from('motoristas').select('id'),
+  ])
+  const vHoje      = (viagens||[]).filter(v => v.data === hoje)
+  const concluidas = (viagens||[]).filter(v => v.status === 'Concluída').length
+  const andamento  = (viagens||[]).filter(v => v.status === 'Em andamento').length
+  const stats = [
+    { label:'Hoje',         value: vHoje.length,          icon:'📅', cor:'bg-blue-500' },
+    { label:'Em Andamento', value: andamento,              icon:'🚗', cor:'bg-yellow-500' },
+    { label:'Concluídas',   value: concluidas,             icon:'✅', cor:'bg-green-500' },
+    { label:'Pacientes',    value:(pacientes||[]).length,  icon:'👤', cor:'bg-purple-500' },
+    { label:'Motoristas',   value:(motoristas||[]).length, icon:'🧑‍✈️', cor:'bg-pink-500' },
+    { label:'Total',        value:(viagens||[]).length,    icon:'📋', cor:'bg-indigo-500' },
+  ]
+  document.getElementById('dashboard-cards').innerHTML = stats.map(s => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 card-touch">
+      <div class="${s.cor} w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0">${s.icon}</div>
+      <div>
+        <p class="text-2xl font-bold text-gray-800 leading-none">${s.value}</p>
+        <p class="text-xs text-gray-400 mt-0.5">${s.label}</p>
+      </div>
+    </div>`).join('')
+
+  if (!vHoje.length) {
+    document.getElementById('dashboard-hoje').innerHTML = '<p class="text-center text-gray-300 py-4 text-sm">Nenhuma viagem hoje</p>'
+    return
+  }
+  document.getElementById('dashboard-hoje').innerHTML = vHoje.map(v => `
+    <div class="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+      <div>
+        <p class="font-medium text-gray-800 text-sm">${v.paciente_nome}</p>
+        <p class="text-xs text-gray-400">${v.destino} • ${v.hora?.slice(0,5)||'-'}</p>
+      </div>
+      ${badge(v.status)}
+    </div>`).join('')
+}
+
+// ============ VIAGENS ============
+let _viagens = []
+
+async function renderViagens() {
+  document.getElementById('viagens-lista').innerHTML = '<div class="text-center py-8"><div class="spinner mx-auto"></div></div>'
+  const { data } = await db.from('viagens').select('*').order('data', { ascending: false })
+  _viagens = data || []
+  document.getElementById('viagens-count').textContent = _viagens.length + ' viagens'
+  renderListaViagens(_viagens)
+}
+
+function renderListaViagens(lista) {
+  if (!lista.length) {
+    document.getElementById('viagens-lista').innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-300 text-sm">Nenhuma viagem encontrada</div>'
+    return
+  }
+  document.getElementById('viagens-lista').innerHTML = lista.map(v => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 border-l-4 ${borderLeft[v.status]||'border-l-gray-300'} card-touch">
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <p class="font-semibold text-gray-800 text-sm">${v.paciente_nome}</p>
+          <p class="text-xs text-gray-400 mt-0.5">📍 Ibiúna → ${v.destino}</p>
+        </div>
+        ${badge(v.status)}
+      </div>
+      <div class="flex gap-4 text-xs text-gray-400">
+        <span>📅 ${fmtData(v.data)}</span>
+        <span>🕐 ${v.hora?.slice(0,5)||'-'}</span>
+        ${v.unidade_saude ? `<span>🏥 ${v.unidade_saude}</span>` : ''}
+      </div>
+    </div>`).join('')
+}
+
+function filtrarViagens() {
+  const q = document.getElementById('viagens-filtro').value.toLowerCase()
+  renderListaViagens(_viagens.filter(v =>
+    v.paciente_nome.toLowerCase().includes(q) || v.destino.toLowerCase().includes(q)
+  ))
+}
+
+// ============ NOVA VIAGEM ============
+async function salvarViagem(e) {
+  e.preventDefault()
+  spin('spin-viagem', true)
+  document.getElementById('btn-salvar-viagem').disabled = true
+  const { error } = await db.from('viagens').insert([{
+    paciente_nome: document.getElementById('nv-nome').value,
+    cpf:           document.getElementById('nv-cpf').value,
+    telefone:      document.getElementById('nv-tel').value,
+    destino:       document.getElementById('nv-destino').value,
+    unidade_saude: document.getElementById('nv-unidade').value,
+    data:          document.getElementById('nv-data').value,
+    hora:          document.getElementById('nv-hora').value,
+    observacoes:   document.getElementById('nv-obs').value,
+    status:        'Agendada',
+  }])
+  spin('spin-viagem', false)
+  document.getElementById('btn-salvar-viagem').disabled = false
+  if (error) {
+    document.getElementById('nova-viagem-erro').textContent = '❌ Erro: ' + error.message
+    document.getElementById('nova-viagem-erro').classList.remove('hidden')
+    return
+  }
+  toast('✅ Viagem agendada!')
+  e.target.reset()
+  setTimeout(() => navegar('viagens'), 1200)
+}
+
+// ============ PACIENTES ============
+async function renderPacientes() {
+  document.getElementById('pacientes-lista').innerHTML = '<div class="text-center py-8"><div class="spinner mx-auto"></div></div>'
+  const { data } = await db.from('pacientes').select('*').order('nome')
+  const lista = data || []
+  document.getElementById('pacientes-count').textContent = lista.length + ' pacientes'
+  if (!lista.length) {
+    document.getElementById('pacientes-lista').innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-300 text-sm">Nenhum paciente cadastrado</div>'
+    return
+  }
+  document.getElementById('pacientes-lista').innerHTML = lista.map(p => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between card-touch">
+      <div>
+        <p class="font-semibold text-gray-800 text-sm">${p.nome}</p>
+        <div class="flex gap-3 text-xs text-gray-400 mt-1">
+          ${p.cpf      ? `<span>📄 ${p.cpf}</span>`      : ''}
+          ${p.telefone ? `<span>📞 ${p.telefone}</span>`  : ''}
+        </div>
+        ${p.endereco ? `<p class="text-xs text-gray-400 mt-0.5">📍 ${p.endereco}</p>` : ''}
+      </div>
+      <button onclick="excluirPaciente('${p.id}')" class="text-red-300 hover:text-red-500 text-lg ml-4">🗑️</button>
+    </div>`).join('')
+}
+
+function toggleFormPaciente() {
+  document.getElementById('form-paciente').classList.toggle('hidden')
+}
+
+async function salvarPaciente(e) {
+  e.preventDefault()
+  spin('spin-paciente', true)
+  document.getElementById('btn-salvar-paciente').disabled = true
+  const { error } = await db.from('pacientes').insert([{
+    nome:     document.getElementById('np-nome').value,
+    cpf:      document.getElementById('np-cpf').value,
+    telefone: document.getElementById('np-tel').value,
+    endereco: document.getElementById('np-end').value,
+  }])
+  spin('spin-paciente', false)
+  document.getElementById('btn-salvar-paciente').disabled = false
+  if (error) { toast('❌ Erro: ' + error.message); return }
+  toast('✅ Paciente salvo!')
+  e.target.reset()
+  toggleFormPaciente()
+  renderPacientes()
+}
+
+async function excluirPaciente(id) {
+  if (!confirm('Excluir este paciente?')) return
+  await db.from('pacientes').delete().eq('id', id)
+  toast('🗑️ Paciente removido')
+  renderPacientes()
+}
+
+// ============ MOTORISTAS ============
+async function renderMotoristas() {
+  document.getElementById('motoristas-lista').innerHTML = '<div class="text-center py-8"><div class="spinner mx-auto"></div></div>'
+  const { data } = await db.from('motoristas').select('*').order('nome')
+  const lista = data || []
+  document.getElementById('motoristas-count').textContent = lista.length + ' motoristas'
+  if (!lista.length) {
+    document.getElementById('motoristas-lista').innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-300 text-sm">Nenhum motorista cadastrado</div>'
+    return
+  }
+  document.getElementById('motoristas-lista').innerHTML = lista.map(m => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between card-touch">
+      <div>
+        <p class="font-semibold text-gray-800 text-sm">🧑‍✈️ ${m.nome}</p>
+        <div class="flex gap-3 text-xs text-gray-400 mt-1 flex-wrap">
+          ${m.telefone ? `<span>📞 ${m.telefone}</span>` : ''}
+          ${m.veiculo  ? `<span>🚗 ${m.veiculo}</span>`  : ''}
+          ${m.placa    ? `<span>🔖 ${m.placa}</span>`    : ''}
+        </div>
+        ${m.cnh ? `<p class="text-xs text-gray-400 mt-0.5">📋 CNH: ${m.cnh}</p>` : ''}
+      </div>
+      <button onclick="excluirMotorista('${m.id}')" class="text-red-300 hover:text-red-500 text-lg ml-4">🗑️</button>
+    </div>`).join('')
+}
+
+function toggleFormMotorista() {
+  document.getElementById('form-motorista').classList.toggle('hidden')
+}
+
+async function salvarMotorista(e) {
+  e.preventDefault()
+  spin('spin-motorista', true)
+  document.getElementById('btn-salvar-motorista').disabled = true
+  const { error } = await db.from('motoristas').insert([{
+    nome:     document.getElementById('nm-nome').value,
+    cnh:      document.getElementById('nm-cnh').value,
+    telefone: document.getElementById('nm-tel').value,
+    veiculo:  document.getElementById('nm-vei').value,
+    placa:    document.getElementById('nm-placa').value,
+  }])
+  spin('spin-motorista', false)
+  document.getElementById('btn-salvar-motorista').disabled = false
+  if (error) { toast('❌ Erro: ' + error.message); return }
+  toast('✅ Motorista salvo!')
+  e.target.reset()
+  toggleFormMotorista()
+  renderMotoristas()
+}
+
+async function excluirMotorista(id) {
+  if (!confirm('Excluir este motorista?')) return
+  await db.from('motoristas').delete().eq('id', id)
+  toast('🗑️ Motorista removido')
+  renderMotoristas()
+}
+
+// ============ ACOMPANHAMENTO ============
+async function renderAcompanhamento() {
+  document.getElementById('acomp-cards').innerHTML = '<div class="text-center py-8"><div class="spinner mx-auto"></div></div>'
+  const { data } = await db.from('viagens').select('*').order('data', { ascending: false })
+  if (!data?.length) {
+    document.getElementById('acomp-cards').innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-300 text-sm">Nenhuma viagem encontrada</div>'
+    return
+  }
+  const statusOpcoes = ['Agendada','Em andamento','Concluída','Cancelada']
+  document.getElementById('acomp-cards').innerHTML = data.map(v => `
+    <div class="bg-white rounded-2xl shadow-sm p-4 border-l-4 ${borderLeft[v.status]||'border-l-gray-300'}">
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <p class="font-semibold text-gray-800 text-sm">${v.paciente_nome}</p>
+          <p class="text-xs text-gray-400 mt-0.5">📍 Ibiúna → ${v.destino}</p>
+        </div>
+        ${badge(v.status)}
+      </div>
+      <div class="text-xs text-gray-400 mb-3 space-y-0.5">
+        <p>📅 ${fmtData(v.data)} às ${v.hora?.slice(0,5)||'-'}</p>
+        ${v.unidade_saude ? `<p>🏥 ${v.unidade_saude}</p>` : ''}
+        ${v.observacoes   ? `<p>📝 ${v.observacoes}</p>`   : ''}
+      </div>
+      <div class="flex flex-wrap gap-2">
+        ${statusOpcoes.filter(s => s !== v.status).map(s => `
+          <button onclick="mudarStatus('${v.id}','${s}')"
+            class="text-xs px-3 py-1.5 rounded-xl border-2 border-gray-100 text-gray-500 active:bg-gray-100 transition font-medium">
+            → ${s}
+          </button>`).join('')}
+      </div>
+    </div>`).join('')
+}
+
+async function mudarStatus(id, novoStatus) {
+  await db.from('viagens').update({ status: novoStatus }).eq('id', id)
+  toast('✅ Status atualizado!')
+  renderAcompanhamento()
+}
+
+// Enter no login
+document.getElementById('login-senha')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') fazerLogin()
+})
+</script>
+
+<!-- ✅ REGISTRAR SERVICE WORKER -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(registration => {
+          console.log('✅ Service Worker registrado! Escopo:', registration.scope)
+
+          // Verifica se há nova versão disponível
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('🔄 Nova versão disponível!')
+                toast('🔄 App atualizado! Recarregue a página.')
+              }
+            })
+          })
+        })
+        .catch(error => {
+          console.warn('❌ Erro no Service Worker:', error)
+        })
+    })
+  } else {
+    console.log('⚠️ Service Worker não suportado neste browser')
+  }
+</script>
+
+</body>
+</html>
